@@ -8,11 +8,13 @@ const app = express();
 
 app.use(express.json());
 
-const CLIENT_ORIGIN = process.env.CLIENT_ORIGIN || "http://localhost:3000";
-app.use(cors({
-  origin: CLIENT_ORIGIN,
-  credentials: true,
-}));
+// const CLIENT_ORIGIN = process.env.CLIENT_ORIGIN || "http://localhost:3000";
+// app.use(cors({
+//   origin: CLIENT_ORIGIN,
+//   credentials: true,
+// }));
+
+app.use(cors());  // ise kra h isiliye upar wala code comment out kiya h 
 
 connectDB(); // ✅ actually call it
 
