@@ -89,7 +89,7 @@ export default function AdminDashboard() {
     }
 
     try {
-      const res  = await fetch(`http://localhost:5000/api/candidate/${id}`, {
+      const res  = await fetch(`${process.env.REACT_APP_BASE_URL}/api/candidate/${id}`, {
         method : "DELETE",
         headers: {
           "Content-Type" : "application/json",
