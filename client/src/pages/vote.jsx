@@ -1,20 +1,14 @@
-// client/src/pages/Vote.jsx
 import React, { useEffect, useState } from "react";
-import { fetchCandidates } from "../api";
+import { fetchCandidates, submitVote } from "../api";
 
-/**
- * Vote page (Tailwind-only)
- * - Rounded filled red button (light red by default)
- * - On preview or vote: button becomes dark red briefly, then reverts to light red
- * - Server vote counts are NOT shown; local counts start at 0 and update only on preview/vote
- */
 export default function Vote() {
   const [candidates, setCandidates] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [voting, setVoting] = useState(null); // candidateId being voted (disables its button)
-  const [toast, setToast] = useState(null); // { type, text }
-  const [localVotes, setLocalVotes] = useState({}); // { id: number }
-  const [flash, setFlash] = useState({}); // { id: true } -> temporarily dark red
+  const [voting, setVoting] = useState(null);
+  const [toast, setToast] = useState(null);
+  const [localVotes, setLocalVotes] = useState({});
+  const [flash, setFlash] = useState({});
+  const [voted, setVoted] = useState(null); // ✅ NEW: track voted candidate
   const token = localStorage.getItem("token");
 
   useEffect(() => {
@@ -34,7 +28,6 @@ export default function Vote() {
 
       setCandidates(list);
 
-      // initialize localVotes (all zero) and flash flags false
       const lv = {};
       const fs = {};
       list.forEach((c) => {
@@ -57,7 +50,6 @@ export default function Vote() {
     setTimeout(() => setToast(null), 2500);
   }
 
-  // flash the small red button for `ms` milliseconds for candidateId
   function flashButton(candidateId, ms = 1200) {
     setFlash((prev) => ({ ...prev, [candidateId]: true }));
     setTimeout(() => {
@@ -70,27 +62,16 @@ export default function Vote() {
       showToast({ type: "error", text: "You must log in to vote." });
       return;
     }
-    if (voting) return; // debounce
+    if (voting) return;
 
     setVoting(candidateId);
     try {
-      const res = await fetch(
-        `${process.env.REACT_APP_API_BASE_URL || "http://localhost:5000"}/api/candidate/vote/${candidateId}`,
-        {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${token}`,
-            "Content-Type": "application/json",
-          },
-        }
-      );
-      const data = await res.json();
+      const data = await submitVote(candidateId);
 
       if (data && (data.success || data.voted === true)) {
-        // increment local vote display (only local)
         setLocalVotes((prev) => ({ ...prev, [candidateId]: (prev[candidateId] || 0) + 1 }));
-        // flash dark red then revert
         flashButton(candidateId, 1200);
+        setVoted(candidateId); // ✅ NEW: mark as voted
         showToast({ type: "success", text: data.message || "Vote recorded — thank you!" });
       } else {
         const msg = (data && (data.message || data.error)) || "Vote failed";
@@ -105,9 +86,7 @@ export default function Vote() {
   }
 
   function handlePreview(candidateId) {
-    // preview increments local display only (no server call)
     setLocalVotes((prev) => ({ ...prev, [candidateId]: (prev[candidateId] || 0) + 1 }));
-    // flash dark red then revert
     flashButton(candidateId, 1200);
     showToast({ type: "info", text: "Preview: local vote increment" });
   }
@@ -117,6 +96,14 @@ export default function Vote() {
   return (
     <div className="min-h-screen bg-slate-50 py-8 px-4 md:px-8">
       <div className="max-w-6xl mx-auto">
+
+        {/* ✅ NEW: Thank you banner */}
+        {voted && (
+          <div className="mb-6 bg-emerald-50 border border-emerald-200 text-emerald-700 text-sm font-medium rounded-lg px-4 py-3">
+            Your vote has been recorded. Thank you for participating!
+          </div>
+        )}
+
         {/* Header */}
         <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 mb-6">
           <div>
@@ -127,11 +114,11 @@ export default function Vote() {
           <div className="flex gap-3">
             <div className="bg-white border border-slate-200 rounded-xl px-4 py-2 shadow-xl text-center">
               <div className="text-xl font-semibold text-indigo-600">{candidates.length}</div>
-              <div className="text-xm text-slate-500">Candidates</div>
+              <div className="text-xs text-slate-500">Candidates</div>
             </div>
             <div className="bg-white border border-slate-200 rounded-xl px-4 py-2 shadow-xl text-center">
               <div className="text-xl font-semibold text-indigo-600">{totalLocalVotes}</div>
-              <div className="text-xm text-slate-500">Local Votes</div>
+              <div className="text-xs text-slate-500">Local Votes</div>
             </div>
           </div>
         </div>
@@ -157,14 +144,17 @@ export default function Vote() {
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
               {candidates.map((c) => {
                 const id = c._id || c.id || c.name;
-                const votes = localVotes[id] || 0; // show only local votes (starts at 0)
+                const votes = localVotes[id] || 0;
                 const isVoting = voting === id;
                 const isFlashed = !!flash[id];
+                const isVoted = voted === id; // ✅ NEW
 
                 return (
                   <article
                     key={id}
-                    className="bg-white rounded-2xl overflow-hidden border transition-transform duration-200 hover:-translate-y-1 hover:shadow-lg"
+                    // ✅ NEW: green border when voted, default otherwise
+                    className={`bg-white rounded-2xl overflow-hidden border transition-transform duration-200 hover:-translate-y-1 hover:shadow-lg
+                      ${isVoted ? "border-2 border-emerald-400" : "border border-slate-100"}`}
                     aria-live="polite"
                   >
                     {/* image */}
@@ -196,23 +186,23 @@ export default function Vote() {
                         <div className="flex items-center gap-2">
                           <button
                             onClick={() => handleVote(id)}
-                            disabled={isVoting || !!voting}
+                            disabled={isVoting || !!voting || !!voted}
+                            // ✅ NEW: green when voted, indigo otherwise
                             className={`inline-flex items-center gap-2 px-10 py-2 rounded-lg text-sm font-semibold text-white shadow-sm transition
-                              bg-gradient-to-r from-indigo-600 to-indigo-500 hover:from-indigo-700 hover:to-indigo-600
-                              ${isVoting ? "opacity-70 cursor-wait" : ""}`}
+                              ${isVoted
+                                ? "bg-emerald-500 cursor-default"
+                                : "bg-gradient-to-r from-indigo-600 to-indigo-500 hover:from-indigo-700 hover:to-indigo-600"}
+                              ${isVoting ? "opacity-70 cursor-wait" : ""}
+                              ${voted && !isVoted ? "opacity-50 cursor-not-allowed" : ""}`}
                           >
                             {isVoting ? (
                               <svg className="w-4 h-4 animate-spin" viewBox="3 3 18 18" fill="none" xmlns="http://www.w3.org/2000/svg">
                                 <path d="M12 5v2" stroke="white" strokeWidth="2" strokeLinecap="round" />
                               </svg>
                             ) : null}
-                            Vote
+                            {isVoted ? "Voted ✓" : "Vote"} {/* ✅ NEW: button text changes */}
                           </button>
 
-                          {/* Rounded filled red button:
-                              - default = filled LIGHT red (bg-rose-300)
-                              - when flashed (preview or vote) = DARK red (bg-rose-700) for a short time, then reverts
-                          */}
                           <button
                             onClick={() => handlePreview(id)}
                             disabled={isVoting || !!voting}
@@ -227,10 +217,7 @@ export default function Vote() {
 
                         <div>
                           <button
-                            onClick={() => {
-                              // alternative local preview increment (same as +1 preview)
-                              handlePreview(id);
-                            }}
+                            onClick={() => handlePreview(id)}
                             className="text-sm px-5 py-2 border rounded-md text-slate-700 hover:bg-slate-100 transition"
                           >
                             +1 preview
@@ -248,7 +235,7 @@ export default function Vote() {
               <div className="mt-6 text-center">
                 <div className="inline-flex items-center gap-2 bg-white border border-slate-100 px-4 py-2 rounded-2xl shadow-sm">
                   <div className="text-sm text-slate-600">You are not logged in —</div>
-                  <a href="/login" className="text-sm font-semibold text-indigo-600 hover:underline">
+                  <a href="/" className="text-sm font-semibold text-indigo-600 hover:underline">
                     Log in to cast your vote
                   </a>
                 </div>
